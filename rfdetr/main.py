@@ -439,6 +439,7 @@ class Model:
             log_stats = {
                 **{f'train_{k}': v for k, v in train_stats.items()},
                 'epoch': epoch,
+                'global_step': (epoch + 1) * len(data_loader_train) - 1,
                 'n_parameters': n_parameters
             }
             if test_stats is not None:

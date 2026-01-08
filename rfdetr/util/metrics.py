@@ -234,6 +234,7 @@ class MetricsWandBSink:
 
         epoch = values['epoch']
         log_dict = {"epoch": epoch}
+        step = values.get("global_step")
 
         if 'train_loss' in values:
             log_dict["Loss/Train"] = values['train_loss']
@@ -267,7 +268,10 @@ class MetricsWandBSink:
             if ema_ar50_90 is not None:
                 log_dict["Metrics/EMA/AR50_90"] = ema_ar50_90
 
-        wandb.log(log_dict)
+        if step is not None:
+            wandb.log(log_dict, step=step)
+        else:
+            wandb.log(log_dict)
 
     def close(self):
         if not wandb or not self.run:
