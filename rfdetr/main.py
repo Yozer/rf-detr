@@ -332,8 +332,10 @@ class Model:
                 args.start_epoch = checkpoint['epoch'] + 1
 
         if args.eval:
+            # If EMA is enabled and present in the checkpoint, prefer evaluating EMA only.
+            eval_model = self.ema_m.module if (args.use_ema and self.ema_m is not None) else model
             test_stats, coco_evaluator = evaluate(
-                model, criterion, postprocess, data_loader_val, base_ds, device, args)
+                eval_model, criterion, postprocess, data_loader_val, base_ds, device, args)
             if args.output_dir:
                 if not args.segmentation_head:
                     utils.save_on_master(coco_evaluator.coco_eval["bbox"].eval, output_dir / "eval.pth")
@@ -363,6 +365,9 @@ class Model:
         best_map_50 = 0
         best_map_ema_5095 = 0
         best_map_ema_50 = 0
+        # Keep the most recent eval stats around for final reporting.
+        test_stats = None
+        ema_test_stats = None
         for epoch in range(args.start_epoch, args.epochs):
             epoch_start_time = time.time()
             if args.distributed:
@@ -400,40 +405,46 @@ class Model:
 
                         utils.save_on_master(weights, checkpoint_path)
 
-            with torch.no_grad():
-                test_stats, coco_evaluator = evaluate(
-                    model, criterion, postprocess, data_loader_val, base_ds, device, args=args
-                )
-            if not args.segmentation_head:
-                map_regular = test_stats["coco_eval_bbox"][0]
-            else:
-                map_regular = test_stats["coco_eval_masks"][0]
-            _isbest = best_map_holder.update(map_regular, epoch, is_ema=False)
-            if _isbest:
-                best_map_5095 = max(best_map_5095, map_regular)
-                if not args.segmentation_head:
-                    map50 = test_stats["coco_eval_bbox"][1]
+            # Validation/evaluation:
+            # - If use_ema=True, evaluate ONLY the EMA model (cuts validation compute ~in half).
+            # - Otherwise evaluate the regular model.
+            with torch.inference_mode():
+                if args.use_ema:
+                    ema_test_stats, coco_evaluator = evaluate(
+                        self.ema_m.module, criterion, postprocess, data_loader_val, base_ds, device, args=args
+                    )
+                    test_stats = None
                 else:
-                    map50 = test_stats["coco_eval_masks"][1]
-                best_map_50 = max(best_map_50, map50)
-                checkpoint_path = output_dir / 'checkpoint_best_regular.pth'
-                if not args.dont_save_weights:
-                    utils.save_on_master({
-                        'model': model_without_ddp.state_dict(),
-                        'optimizer': optimizer.state_dict(),
-                        'lr_scheduler': lr_scheduler.state_dict(),
-                        'epoch': epoch,
-                        'args': args,
-                    }, checkpoint_path)
-            log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
-                        **{f'test_{k}': v for k, v in test_stats.items()},
-                        'epoch': epoch,
-                        'n_parameters': n_parameters}
-            if args.use_ema:
-                ema_test_stats, _ = evaluate(
-                    self.ema_m.module, criterion, postprocess, data_loader_val, base_ds, device, args=args
-                )
-                log_stats.update({f'ema_test_{k}': v for k,v in ema_test_stats.items()})
+                    test_stats, coco_evaluator = evaluate(
+                        model, criterion, postprocess, data_loader_val, base_ds, device, args=args
+                    )
+                    ema_test_stats = None
+
+            # Track/checkpoint best models.
+            if test_stats is not None:
+                if not args.segmentation_head:
+                    map_regular = test_stats["coco_eval_bbox"][0]
+                else:
+                    map_regular = test_stats["coco_eval_masks"][0]
+                _isbest = best_map_holder.update(map_regular, epoch, is_ema=False)
+                if _isbest:
+                    best_map_5095 = max(best_map_5095, map_regular)
+                    if not args.segmentation_head:
+                        map50 = test_stats["coco_eval_bbox"][1]
+                    else:
+                        map50 = test_stats["coco_eval_masks"][1]
+                    best_map_50 = max(best_map_50, map50)
+                    checkpoint_path = output_dir / 'checkpoint_best_regular.pth'
+                    if not args.dont_save_weights:
+                        utils.save_on_master({
+                            'model': model_without_ddp.state_dict(),
+                            'optimizer': optimizer.state_dict(),
+                            'lr_scheduler': lr_scheduler.state_dict(),
+                            'epoch': epoch,
+                            'args': args,
+                        }, checkpoint_path)
+
+            if ema_test_stats is not None:
                 if not args.segmentation_head:
                     map_ema = ema_test_stats["coco_eval_bbox"][0]
                 else:
@@ -455,6 +466,17 @@ class Model:
                             'epoch': epoch,
                             'args': args,
                         }, checkpoint_path)
+
+            # Logging. When use_ema=True we intentionally only emit `ema_test_*` metrics.
+            log_stats = {
+                **{f'train_{k}': v for k, v in train_stats.items()},
+                'epoch': epoch,
+                'n_parameters': n_parameters
+            }
+            if test_stats is not None:
+                log_stats.update({f'test_{k}': v for k, v in test_stats.items()})
+            if ema_test_stats is not None:
+                log_stats.update({f'ema_test_{k}': v for k, v in ema_test_stats.items()})
             log_stats.update(best_map_holder.summary())
 
             # epoch parameters
@@ -498,14 +520,20 @@ class Model:
                 print(f"Early stopping requested, stopping at epoch {epoch}")
                 break
 
-        best_is_ema = best_map_ema_5095 > best_map_5095
-
+        best_is_ema = args.use_ema or (best_map_ema_5095 > best_map_5095)
+        
         if utils.is_main_process():
-            if best_is_ema:
-                shutil.copy2(output_dir / 'checkpoint_best_ema.pth', output_dir / 'checkpoint_best_total.pth')
+            # Prefer best EMA when available; otherwise fallback to best regular; otherwise fallback to last checkpoint.
+            ema_best = output_dir / 'checkpoint_best_ema.pth'
+            reg_best = output_dir / 'checkpoint_best_regular.pth'
+            last_ckpt = output_dir / 'checkpoint.pth'
+            if best_is_ema and ema_best.exists():
+                shutil.copy2(ema_best, output_dir / 'checkpoint_best_total.pth')
+            elif reg_best.exists():
+                shutil.copy2(reg_best, output_dir / 'checkpoint_best_total.pth')
             else:
-                shutil.copy2(output_dir / 'checkpoint_best_regular.pth', output_dir / 'checkpoint_best_total.pth')
-
+                shutil.copy2(last_ckpt, output_dir / 'checkpoint_best_total.pth')
+            
             utils.strip_checkpoint(output_dir / 'checkpoint_best_total.pth')
 
             best_map_5095 = max(best_map_5095, best_map_ema_5095)
