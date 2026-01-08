@@ -141,6 +141,44 @@ class MetricsTensorBoardSink:
 
         epoch = values['epoch']
 
+        def log_coco_stats(tag_prefix: str, coco_eval: list):
+            if coco_eval is None:
+                return
+            stats = [
+                ("AP50_95", 0),
+                ("AP50", 1),
+                ("AP75", 2),
+                ("APs", 3),
+                ("APm", 4),
+                ("APl", 5),
+                ("AR1", 6),
+                ("AR10", 7),
+                ("AR100", 8),
+                ("ARs", 9),
+                ("ARm", 10),
+                ("ARl", 11),
+            ]
+            for name, idx in stats:
+                v = safe_index(coco_eval, idx)
+                if v is not None:
+                    self.writer.add_scalar(f"{tag_prefix}/{name}", v, epoch)
+
+        def log_extended(tag_prefix: str, results_json: dict):
+            if not results_json:
+                return
+            precision = results_json.get("precision")
+            recall = results_json.get("recall")
+            f1 = results_json.get("f1")
+            score_thr = results_json.get("score_thr")
+            if precision is not None:
+                self.writer.add_scalar(f"{tag_prefix}/Precision", precision, epoch)
+            if recall is not None:
+                self.writer.add_scalar(f"{tag_prefix}/Recall", recall, epoch)
+            if f1 is not None:
+                self.writer.add_scalar(f"{tag_prefix}/F1", f1, epoch)
+            if score_thr is not None:
+                self.writer.add_scalar(f"{tag_prefix}/ScoreThr", score_thr, epoch)
+
         if 'train_loss' in values:
             self.writer.add_scalar("Loss/Train", values['train_loss'], epoch)
         if 'test_loss' in values:
@@ -160,6 +198,7 @@ class MetricsTensorBoardSink:
                 self.writer.add_scalar("Metrics-BBox/Base/AP50", ap50, epoch)
             if ar50_90 is not None:
                 self.writer.add_scalar("Metrics-BBox/Base/AR50_90", ar50_90, epoch)
+            log_coco_stats("Metrics-BBox/Base", coco_eval)
 
         if 'ema_test_coco_eval_bbox' in values:
             ema_coco_eval = values['ema_test_coco_eval_bbox']
@@ -172,6 +211,7 @@ class MetricsTensorBoardSink:
                 self.writer.add_scalar("Metrics-BBox/EMA/AP50", ema_ap50, epoch)
             if ema_ar50_90 is not None:
                 self.writer.add_scalar("Metrics-BBox/EMA/AR50_90", ema_ar50_90, epoch)
+            log_coco_stats("Metrics-BBox/EMA", ema_coco_eval)
 
         if 'test_coco_eval_masks' in values:
             coco_eval = values['test_coco_eval_masks']
@@ -184,6 +224,7 @@ class MetricsTensorBoardSink:
                 self.writer.add_scalar("Metrics-Masks/Base/AP50", ap50, epoch)
             if ar50_90 is not None:
                 self.writer.add_scalar("Metrics-Masks/Base/AR50_90", ar50_90, epoch)
+            log_coco_stats("Metrics-Masks/Base", coco_eval)
 
         if 'ema_test_coco_eval_masks' in values:
             ema_coco_eval = values['ema_test_coco_eval_masks']
@@ -196,6 +237,21 @@ class MetricsTensorBoardSink:
                 self.writer.add_scalar("Metrics-Masks/EMA/AP50", ema_ap50, epoch)
             if ema_ar50_90 is not None:
                 self.writer.add_scalar("Metrics-Masks/EMA/AR50_90", ema_ar50_90, epoch)
+            log_coco_stats("Metrics-Masks/EMA", ema_coco_eval)
+
+        if "test_results_json_bbox" in values:
+            log_extended("MetricsExt-BBox/Base", values["test_results_json_bbox"])
+        elif "test_results_json" in values:
+            log_extended("MetricsExt-BBox/Base", values["test_results_json"])
+        if "ema_test_results_json_bbox" in values:
+            log_extended("MetricsExt-BBox/EMA", values["ema_test_results_json_bbox"])
+        elif "ema_test_results_json" in values:
+            log_extended("MetricsExt-BBox/EMA", values["ema_test_results_json"])
+
+        if "test_results_json_masks" in values:
+            log_extended("MetricsExt-Masks/Base", values["test_results_json_masks"])
+        if "ema_test_results_json_masks" in values:
+            log_extended("MetricsExt-Masks/EMA", values["ema_test_results_json_masks"])
 
         self.writer.flush()
 

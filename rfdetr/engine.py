@@ -458,12 +458,14 @@ def evaluate(model, criterion, postprocess, data_loader, base_ds, device, args=N
         coco_evaluator.summarize()
     stats = {k: meter.global_avg for k, meter in metric_logger.meters.items()}
     if coco_evaluator is not None:
-        results_json = coco_extended_metrics(coco_evaluator.coco_eval["bbox"])
-        stats["results_json"] = results_json
+        results_json_bbox = coco_extended_metrics(coco_evaluator.coco_eval["bbox"])
+        stats["results_json"] = results_json_bbox
+        stats["results_json_bbox"] = results_json_bbox
         if "bbox" in iou_types:
             stats["coco_eval_bbox"] = coco_evaluator.coco_eval["bbox"].stats.tolist()
 
         if "segm" in iou_types:
-            results_json = coco_extended_metrics(coco_evaluator.coco_eval["segm"])
+            results_json_masks = coco_extended_metrics(coco_evaluator.coco_eval["segm"])
+            stats["results_json_masks"] = results_json_masks
             stats["coco_eval_masks"] = coco_evaluator.coco_eval["segm"].stats.tolist()
     return stats, coco_evaluator
