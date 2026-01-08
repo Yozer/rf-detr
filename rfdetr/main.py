@@ -35,6 +35,7 @@ import numpy as np
 import torch
 from peft import LoraConfig, get_peft_model
 from torch.utils.data import DataLoader, DistributedSampler
+from torch.distributed.elastic.multiprocessing.errors import record
 
 import rfdetr.util.misc as utils
 from rfdetr.datasets import build_dataset, get_coco_api_from_dataset
@@ -153,6 +154,7 @@ class Model:
         self.stop_early = True
         print("Early stopping requested, will complete current epoch and stop")
 
+    @record
     def train(self, callbacks: DefaultDict[str, List[Callable]], **kwargs):
         currently_supported_callbacks = ["on_fit_epoch_end", "on_train_batch_start", "on_train_end"]
         for key in callbacks.keys():
