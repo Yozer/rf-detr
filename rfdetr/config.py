@@ -274,6 +274,7 @@ class TrainConfig(BaseModel):
     early_stopping_use_ema: bool = False
     tensorboard: bool = True
     wandb: bool = False
+    wandb_train_log_freq: int = 0
     project: Optional[str] = None
     run: Optional[str] = None
     class_names: List[str] = None
