@@ -48,6 +48,9 @@ class MetricsPlotSink:
         epochs = get_array('epoch')
         train_loss = get_array('train_loss')
         test_loss = get_array('test_loss')
+        ema_test_loss = get_array('ema_test_loss')
+        val_loss = test_loss if len(test_loss) else ema_test_loss
+        val_loss_label = 'Validation Loss' if len(test_loss) else 'Validation Loss (EMA)'
         test_coco_eval = [h['test_coco_eval_bbox'] for h in self.history if 'test_coco_eval_bbox' in h]
         ap50_90 = np.array([safe_index(x, 0) for x in test_coco_eval if x is not None], dtype=np.float32)
         ap50 = np.array([safe_index(x, 1) for x in test_coco_eval if x is not None], dtype=np.float32)
@@ -64,8 +67,8 @@ class MetricsPlotSink:
         if len(epochs) > 0:
             if len(train_loss):
                 axes[0][0].plot(epochs, train_loss, label='Training Loss', marker='o', linestyle='-')
-            if len(test_loss):
-                axes[0][0].plot(epochs, test_loss, label='Validation Loss', marker='o', linestyle='--')
+            if len(val_loss):
+                axes[0][0].plot(epochs, val_loss, label=val_loss_label, marker='o', linestyle='--')
             axes[0][0].set_title('Training and Validation Loss')
             axes[0][0].set_xlabel('Epoch Number')
             axes[0][0].set_ylabel('Loss Value')
@@ -140,6 +143,9 @@ class MetricsTensorBoardSink:
             self.writer.add_scalar("Loss/Train", values['train_loss'], epoch)
         if 'test_loss' in values:
             self.writer.add_scalar("Loss/Test", values['test_loss'], epoch)
+        elif 'ema_test_loss' in values:
+            # When use_ema=True we may only emit EMA validation metrics.
+            self.writer.add_scalar("Loss/Test", values['ema_test_loss'], epoch)
 
         if 'test_coco_eval_bbox' in values:
             coco_eval = values['test_coco_eval_bbox']
@@ -233,6 +239,9 @@ class MetricsWandBSink:
             log_dict["Loss/Train"] = values['train_loss']
         if 'test_loss' in values:
             log_dict["Loss/Test"] = values['test_loss']
+        elif 'ema_test_loss' in values:
+            # When use_ema=True we may only emit EMA validation metrics.
+            log_dict["Loss/Test"] = values['ema_test_loss']
 
         if 'test_coco_eval_bbox' in values:
             coco_eval = values['test_coco_eval_bbox']
