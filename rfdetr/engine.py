@@ -65,11 +65,7 @@ def train_one_epoch(
     args=None,
     callbacks: DefaultDict[str, List[Callable]] = None,
 ):
-    wandb_train_log_freq = int(getattr(args, "wandb_train_log_freq", 0) or 0)
-    metric_logger = utils.MetricLogger(
-        delimiter="  ",
-        wandb_logging=bool(getattr(args, "wandb", False)) and wandb_train_log_freq > 0,
-    )
+    metric_logger = utils.MetricLogger(delimiter="  ")
     metric_logger.add_meter("lr", utils.SmoothedValue(window_size=1, fmt="{value:.6f}"))
     metric_logger.add_meter(
         "class_error", utils.SmoothedValue(window_size=1, fmt="{value:.2f}")
@@ -92,14 +88,7 @@ def train_one_epoch(
     sub_batch_size = batch_size // args.grad_accum_steps
     print("LENGTH OF DATA LOADER:", len(data_loader))
     for data_iter_step, (samples, targets) in enumerate(
-        metric_logger.log_every(
-            data_loader,
-            print_freq,
-            header,
-            wandb_log_freq=wandb_train_log_freq if wandb_train_log_freq > 0 else None,
-            wandb_start_step=epoch * len(data_loader),
-            wandb_prefix="train_step/",
-        )
+        metric_logger.log_every(data_loader, print_freq, header)
     ):
         it = start_steps + data_iter_step
         callback_dict = {
@@ -130,7 +119,6 @@ def train_one_epoch(
                 samples.tensors = F.interpolate(samples.tensors, size=scale, mode='bilinear', align_corners=False)
                 samples.mask = F.interpolate(samples.mask.unsqueeze(1).float(), size=scale, mode='nearest').squeeze(1).bool()
 
-        loss_dict_accum = None
         for i in range(args.grad_accum_steps):
             start_idx = i * sub_batch_size
             final_idx = start_idx + sub_batch_size
@@ -148,19 +136,10 @@ def train_one_epoch(
                     for k in loss_dict.keys()
                     if k in weight_dict
                 )
-                del outputs
-            if loss_dict_accum is None:
-                loss_dict_accum = {k: v.detach() for k, v in loss_dict.items()}
-            else:
-                for k, v in loss_dict.items():
-                    if k in loss_dict_accum:
-                        loss_dict_accum[k] += v.detach()
-                    else:
-                        loss_dict_accum[k] = v.detach()
+
 
             scaler.scale(losses).backward()
 
-        loss_dict = {k: (v / args.grad_accum_steps) for k, v in loss_dict_accum.items()}
         # reduce losses over all GPUs for logging purposes
         loss_dict_reduced = utils.reduce_dict(loss_dict)
         loss_dict_reduced_unscaled = {

@@ -217,8 +217,6 @@ class MetricLogger(object):
         iter_time = SmoothedValue(fmt='{avg:.4f}')
         data_time = SmoothedValue(fmt='{avg:.4f}')
         space_fmt = ':' + str(len(str(len(iterable)))) + 'd'
-        if wandb_log_freq is None:
-            wandb_log_freq = print_freq
         if torch.cuda.is_available():
             log_msg = self.delimiter.join([
                 header,
@@ -243,15 +241,13 @@ class MetricLogger(object):
             data_time.update(time.time() - end)
             yield obj
             iter_time.update(time.time() - end)
-            if self.wandb and is_main_process() and wandb_log_freq and (i % wandb_log_freq == 0 or i == len(iterable) - 1):
-                log_dict = {f"{wandb_prefix}{k}": v.value for k, v in self.meters.items()}
-                if wandb_start_step is not None:
-                    self.wandb.log(log_dict, step=wandb_start_step + i)
-                else:
-                    self.wandb.log(log_dict)
             if i % print_freq == 0 or i == len(iterable) - 1:
                 eta_seconds = iter_time.global_avg * (len(iterable) - i)
                 eta_string = str(datetime.timedelta(seconds=int(eta_seconds)))
+                if self.wandb:
+                    if is_main_process():
+                        log_dict = {k: v.value for k, v in self.meters.items()}
+                        self.wandb.log(log_dict)
                 if torch.cuda.is_available():
                     print(log_msg.format(
                         i, len(iterable), eta=eta_string,
