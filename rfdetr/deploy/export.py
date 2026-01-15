@@ -243,7 +243,12 @@ def main(args):
 
     input_tensors = make_infer_image(args, device)
     input_names = ['input']
-    output_names = ['features'] if args.backbone_only else ['dets', 'labels']
+    if args.backbone_only:
+        output_names = ['features']
+    elif args.segmentation_head:
+        output_names = ['dets', 'labels', 'masks']
+    else:
+        output_names = ['dets', 'labels']
     dynamic_axes = None
     # Run model inference in pytorch mode
     model.eval().to("cuda")
