@@ -6,9 +6,11 @@
 import glob
 import json
 import os
+import warnings
 from collections import defaultdict
 from copy import deepcopy
 from logging import getLogger
+from pathlib import Path
 from typing import List, Union
 
 import numpy as np
@@ -46,6 +48,7 @@ from rfdetr.config import (
 )
 from rfdetr.main import Model, download_pretrain_weights
 from rfdetr.util.coco_classes import COCO_CLASSES
+from rfdetr.util import misc as utils
 from rfdetr.util.metrics import MetricsPlotSink, MetricsTensorBoardSink, MetricsWandBSink
 
 logger = getLogger(__name__)
@@ -227,6 +230,33 @@ class RFDETR:
                 segmentation_head=config.segmentation_head
             )
             self.callbacks["on_fit_epoch_end"].append(early_stopping_callback.update)
+
+        def save_ema_checkpoint_on_epoch_end(log_stats):
+            if not config.use_ema:
+                return
+
+            ema_m = self.model.ema_m
+            if ema_m is None:
+                raise RuntimeError(
+                    "use_ema=True but `model.ema_m` is None; cannot save EMA checkpoint."
+                )
+
+            epoch = int(log_stats["epoch"])
+            weights = {
+                "model": ema_m.module.state_dict(),
+                "epoch": epoch,
+                "args": getattr(self.model, "args", None),
+            }
+
+            output_dir = Path(config.output_dir)
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            utils.save_on_master(weights, output_dir / f"checkpoint{epoch:04}_ema.pth")
+            utils.save_on_master(weights, output_dir / f"checkpoint{epoch:04}_ema_bbox.pth")
+            if config.segmentation_head:
+                utils.save_on_master(weights, output_dir / f"checkpoint{epoch:04}_ema_segm.pth")
+
+        self.callbacks["on_fit_epoch_end"].append(save_ema_checkpoint_on_epoch_end)
 
         self.model.train(
             **all_kwargs,

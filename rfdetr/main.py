@@ -367,6 +367,8 @@ class Model:
         best_map_50 = 0
         best_map_ema_5095 = 0
         best_map_ema_50 = 0
+        best_map_ema_bbox_5095 = -1.0
+        best_map_ema_segm_5095 = -1.0
         # Keep the most recent eval stats around for final reporting.
         test_stats = None
         ema_test_stats = None
@@ -447,6 +449,44 @@ class Model:
                         }, checkpoint_path)
 
             if ema_test_stats is not None:
+                if args.segmentation_head and "coco_eval_bbox" not in ema_test_stats:
+                    raise RuntimeError(
+                        "segmentation_head=True but EMA evaluation did not produce `coco_eval_bbox` metrics."
+                    )
+                if "coco_eval_bbox" in ema_test_stats:
+                    map_ema_bbox = ema_test_stats["coco_eval_bbox"][0]
+                    if map_ema_bbox > best_map_ema_bbox_5095:
+                        best_map_ema_bbox_5095 = map_ema_bbox
+                        checkpoint_path = output_dir / "checkpoint_best_ema_bbox.pth"
+                        if not args.dont_save_weights:
+                            utils.save_on_master(
+                                {
+                                    "model": self.ema_m.module.state_dict(),
+                                    "optimizer": optimizer.state_dict(),
+                                    "lr_scheduler": lr_scheduler.state_dict(),
+                                    "epoch": epoch,
+                                    "args": args,
+                                },
+                                checkpoint_path,
+                            )
+
+                if "coco_eval_masks" in ema_test_stats:
+                    map_ema_segm = ema_test_stats["coco_eval_masks"][0]
+                    if map_ema_segm > best_map_ema_segm_5095:
+                        best_map_ema_segm_5095 = map_ema_segm
+                        checkpoint_path = output_dir / "checkpoint_best_ema_segm.pth"
+                        if not args.dont_save_weights:
+                            utils.save_on_master(
+                                {
+                                    "model": self.ema_m.module.state_dict(),
+                                    "optimizer": optimizer.state_dict(),
+                                    "lr_scheduler": lr_scheduler.state_dict(),
+                                    "epoch": epoch,
+                                    "args": args,
+                                },
+                                checkpoint_path,
+                            )
+
                 if not args.segmentation_head:
                     map_ema = ema_test_stats["coco_eval_bbox"][0]
                 else:
