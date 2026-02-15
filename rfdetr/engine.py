@@ -112,7 +112,7 @@ def train_one_epoch(
                 model.update_dropout(schedules["do"][it])
 
         if args.multi_scale and not args.do_random_resize_via_padding:
-            scales = compute_multi_scale_scales(args.resolution, args.expanded_scales, args.patch_size, args.num_windows)
+            scales = compute_multi_scale_scales(args.resolution, args.expanded_scales, args.patch_size, args.num_windows, getattr(args, "multi_scale_no_downscale", False))
             random.seed(it)
             scale = random.choice(scales)
             with torch.no_grad():

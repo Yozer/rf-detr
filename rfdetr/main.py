@@ -934,6 +934,7 @@ def get_args_parser():
     parser.add_argument('--resolution', type=int, default=640, help="input resolution")
     parser.add_argument('--use_cls_token', action='store_true', help='use cls token')
     parser.add_argument('--multi_scale', action='store_true', help='use multi scale')
+    parser.add_argument('--multi_scale_no_downscale', action='store_true', help='do not downscale below input resolution when multi scale is enabled')
     parser.add_argument('--expanded_scales', action='store_true', help='use expanded scales')
     parser.add_argument('--do_random_resize_via_padding', action='store_true', help='use random resize via padding')
     parser.add_argument('--warmup_epochs', default=1, type=float,
@@ -1083,6 +1084,7 @@ def populate_args(
     resolution=640,
     use_cls_token=False,
     multi_scale=False,
+    multi_scale_no_downscale=False,
     expanded_scales=False,
     do_random_resize_via_padding=False,
     warmup_epochs=1,
@@ -1185,6 +1187,7 @@ def populate_args(
         resolution=resolution,
         use_cls_token=use_cls_token,
         multi_scale=multi_scale,
+        multi_scale_no_downscale=multi_scale_no_downscale,
         expanded_scales=expanded_scales,
         do_random_resize_via_padding=do_random_resize_via_padding,
         warmup_epochs=warmup_epochs,

@@ -495,6 +495,7 @@ def build_roboflow_from_yolo(image_set: str, args: Any, resolution: int) -> Yolo
     square_resize_div_64 = getattr(args, "square_resize_div_64", False)
     include_masks = getattr(args, "segmentation_head", False)
     multi_scale = getattr(args, "multi_scale", False)
+    multi_scale_no_downscale = getattr(args, "multi_scale_no_downscale", False)
     expanded_scales = getattr(args, "expanded_scales", None)
     do_random_resize_via_padding = getattr(args, "do_random_resize_via_padding", False)
     patch_size = getattr(args, "patch_size", None)
@@ -505,10 +506,11 @@ def build_roboflow_from_yolo(image_set: str, args: Any, resolution: int) -> Yolo
             img_folder=str(img_folder),
             lb_folder=str(lb_folder),
             data_file=str(data_file),
-            transforms=make_coco_transforms_square_div_64(
+            transforms=            make_coco_transforms_square_div_64(
                 image_set,
                 resolution,
                 multi_scale=multi_scale,
+                multi_scale_no_downscale=multi_scale_no_downscale,
                 expanded_scales=expanded_scales,
                 skip_random_resize=not do_random_resize_via_padding,
                 patch_size=patch_size,
@@ -521,10 +523,11 @@ def build_roboflow_from_yolo(image_set: str, args: Any, resolution: int) -> Yolo
             img_folder=str(img_folder),
             lb_folder=str(lb_folder),
             data_file=str(data_file),
-            transforms=make_coco_transforms(
+            transforms=            make_coco_transforms(
                 image_set,
                 resolution,
                 multi_scale=multi_scale,
+                multi_scale_no_downscale=multi_scale_no_downscale,
                 expanded_scales=expanded_scales,
                 skip_random_resize=not do_random_resize_via_padding,
                 patch_size=patch_size,

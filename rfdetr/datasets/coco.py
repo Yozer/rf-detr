@@ -33,13 +33,15 @@ import rfdetr.datasets.transforms as T
 def is_valid_coco_dataset(dataset_dir: str) -> bool:
     return (Path(dataset_dir) / "train" / "_annotations.coco.json").exists()
 
-def compute_multi_scale_scales(resolution: int, expanded_scales: bool = False, patch_size: int = 16, num_windows: int = 4) -> List[int]:
+def compute_multi_scale_scales(resolution: int, expanded_scales: bool = False, patch_size: int = 16, num_windows: int = 4, multi_scale_no_downscale: bool = False) -> List[int]:
     # round to the nearest multiple of 4*patch_size to enable both patching and windowing
     base_num_patches_per_window = resolution // (patch_size * num_windows)
     offsets = [-3, -2, -1, 0, 1, 2, 3, 4] if not expanded_scales else [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5]
     scales = [base_num_patches_per_window + offset for offset in offsets]
     proposed_scales = [scale * patch_size * num_windows for scale in scales]
     proposed_scales = [scale for scale in proposed_scales if scale >= patch_size * num_windows * 2]  # ensure minimum image size
+    if multi_scale_no_downscale:
+        proposed_scales = [scale for scale in proposed_scales if scale >= resolution]
     return proposed_scales
 
 
@@ -145,7 +147,7 @@ class ConvertCoco(object):
         return image, target
 
 
-def make_coco_transforms(image_set: str, resolution: int, multi_scale: bool = False, expanded_scales: bool = False, skip_random_resize: bool = False, patch_size: int = 16, num_windows: int = 4) -> T.Compose:
+def make_coco_transforms(image_set: str, resolution: int, multi_scale: bool = False, multi_scale_no_downscale: bool = False, expanded_scales: bool = False, skip_random_resize: bool = False, patch_size: int = 16, num_windows: int = 4) -> T.Compose:
 
     normalize = T.Compose([
         T.ToTensor(),
@@ -155,7 +157,7 @@ def make_coco_transforms(image_set: str, resolution: int, multi_scale: bool = Fa
     scales = [resolution]
     if multi_scale:
         # scales = [448, 512, 576, 640, 704, 768, 832, 896]
-        scales = compute_multi_scale_scales(resolution, expanded_scales, patch_size, num_windows)
+        scales = compute_multi_scale_scales(resolution, expanded_scales, patch_size, num_windows, multi_scale_no_downscale)
         if skip_random_resize:
             scales = [scales[-1]]
         print(scales)
@@ -188,7 +190,7 @@ def make_coco_transforms(image_set: str, resolution: int, multi_scale: bool = Fa
     raise ValueError(f'unknown {image_set}')
 
 
-def make_coco_transforms_square_div_64(image_set: str, resolution: int, multi_scale: bool = False, expanded_scales: bool = False, skip_random_resize: bool = False, patch_size: int = 16, num_windows: int = 4) -> T.Compose:
+def make_coco_transforms_square_div_64(image_set: str, resolution: int, multi_scale: bool = False, multi_scale_no_downscale: bool = False, expanded_scales: bool = False, skip_random_resize: bool = False, patch_size: int = 16, num_windows: int = 4) -> T.Compose:
 
     normalize = T.Compose([
         T.ToTensor(),
@@ -199,7 +201,7 @@ def make_coco_transforms_square_div_64(image_set: str, resolution: int, multi_sc
     scales = [resolution]
     if multi_scale:
         # scales = [448, 512, 576, 640, 704, 768, 832, 896]
-        scales = compute_multi_scale_scales(resolution, expanded_scales, patch_size, num_windows)
+        scales = compute_multi_scale_scales(resolution, expanded_scales, patch_size, num_windows, multi_scale_no_downscale)
         if skip_random_resize:
             scales = [scales[-1]]
         print(scales)
@@ -256,6 +258,7 @@ def build_coco(image_set: str, args: Any, resolution: int) -> CocoDetection:
             image_set,
             resolution,
             multi_scale=args.multi_scale,
+            multi_scale_no_downscale=getattr(args, "multi_scale_no_downscale", False),
             expanded_scales=args.expanded_scales,
             skip_random_resize=not args.do_random_resize_via_padding,
             patch_size=args.patch_size,
@@ -266,6 +269,7 @@ def build_coco(image_set: str, args: Any, resolution: int) -> CocoDetection:
             image_set,
             resolution,
             multi_scale=args.multi_scale,
+            multi_scale_no_downscale=getattr(args, "multi_scale_no_downscale", False),
             expanded_scales=args.expanded_scales,
             skip_random_resize=not args.do_random_resize_via_padding,
             patch_size=args.patch_size,
@@ -291,6 +295,7 @@ def build_roboflow_from_coco(image_set: str, args: Any, resolution: int) -> Coco
     square_resize_div_64 = getattr(args, "square_resize_div_64", False)
     include_masks = getattr(args, "segmentation_head", False)
     multi_scale = getattr(args, "multi_scale", False)
+    multi_scale_no_downscale = getattr(args, "multi_scale_no_downscale", False)
     expanded_scales = getattr(args, "expanded_scales", False)
     do_random_resize_via_padding = getattr(args, "do_random_resize_via_padding", False)
     patch_size = getattr(args, "patch_size", 16)
@@ -301,6 +306,7 @@ def build_roboflow_from_coco(image_set: str, args: Any, resolution: int) -> Coco
             image_set,
             resolution,
             multi_scale=multi_scale,
+            multi_scale_no_downscale=multi_scale_no_downscale,
             expanded_scales=expanded_scales,
             skip_random_resize=not do_random_resize_via_padding,
             patch_size=patch_size,
@@ -311,6 +317,7 @@ def build_roboflow_from_coco(image_set: str, args: Any, resolution: int) -> Coco
             image_set,
             resolution,
             multi_scale=multi_scale,
+            multi_scale_no_downscale=multi_scale_no_downscale,
             expanded_scales=expanded_scales,
             skip_random_resize=not do_random_resize_via_padding,
             patch_size=patch_size,
